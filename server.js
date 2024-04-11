@@ -1,37 +1,71 @@
-// Inkluderar Express och middleware för json, startar upp appen och väljer port.
+// Förbereder miljön för anslutning till PostgreSQL-databasen.
+const { Client } = require("pg");
+require("dotenv").config();
+
+// Inkluderar Express, startar upp appen, aktiverar middleware för json och Cors samt väljer port.
 const express = require("express");
 const app = express();
 app.use(express.json());
-const port = process.env.PORT || 3000;
-
-// Ställer in att Cors ska användas.
 const cors = require("cors");
 app.use(cors());
+const port = process.env.PORT || 3000;
 
-// Routing.
-// Hämtar API.
-app.get("/api", (req, res) => {
-    res.json({
-        message: "Hello from the API!"
-    })
+
+// Ansluter till databasen.
+const client = new Client({
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    user: process.env.DB_USERNAME,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
+    ssl: {
+        rejectUnauthorized: false,
+    },
 });
 
+// Anslutnings- eller felmeddelande.
+client.connect((error) => {
+    if(error) {
+        console.log("An error arose on connection to the database: " + error);
+    } else {
+        console.log("Connected to the database");
+    }
+});
+
+
+// Routing.
+
 // Hämtar lagrade jobb.
-app.get("/api/work", (req, res) => {
-    res.json({
-        message: "Get all jobs!"
-    })
+app.get("/work", (req, res) => {
+
+    // Läser in jobb från databasen.
+    client.query("SELECT * FROM moment2_work;", (error, result) => {
+
+        // Kontroll och meddelande vid fel.
+        if(error) {
+            // Felmeddelande.
+            res.status(500).json({error: "Something went wrong: " + error});
+            return;
+        }
+
+        // Kontroll av innehåll i tabellen och meddelande om den är tom.
+        if(result.rows.length === 0) {
+            res.status(404).json({message: "No work-posts found"});
+        } else {
+            res.json(result.rows);
+        }
+    });
 });
 
 // Hämtar specifikt jobb.
-app.get("/api/work/:id", (req, res) => {
+app.get("/work/:id", (req, res) => {
     res.json({
         message: "Get specific job!"
     })
 });
 
 // Skapar/lagrar jobb.
-app.post("/api/work", (req, res) => {
+app.post("/work", (req, res) => {
     // Hämtar input.
     let companyname = req.body.companyname;
     let jobtitle = req.body.jobtitle;
@@ -61,29 +95,40 @@ app.post("/api/work", (req, res) => {
         return;
     }
 
-    // Lagrar input i ett objekt.
-    let work = {
-        companyname: companyname,
-        jobtitle: jobtitle,
-        location: location,
-        description: description
-    };
+    // SQL-fråga för att lägga till jobb-post.
+    client.query("INSERT INTO moment2_work(companyname, jobtitle, location, description) VALUES($1, $2, $3, $4)",
+        [companyname, jobtitle, location, description], (error, result) => {
+            // Kontroll och meddelande vid fel.
+            if (error) {
+                // Felmeddelande.
+                res.status(500).json({ error: "Something went wrong: " + error });
+                return;
+            }
 
-    // Response vid lyckad input-inmatning.
-    res.json({
-        message: "Work added!", work
-    })
+            // Lagrar input i ett objekt.
+            let work = {
+                companyname: companyname,
+                jobtitle: jobtitle,
+                location: location,
+                description: description
+            };
+
+            // Response vid lyckad input-inmatning.
+            res.json({
+                message: "Work added!", work
+            })
+        });
 });
 
 // Uppdaterar specifikt jobb.
-app.put("/api/work/:id", (req, res) => {
+app.put("/work/:id", (req, res) => {
     res.json({
         message: "Job updated: " + req.params.id
     })
 });
 
 // Raderar specifikt jobb.
-app.delete("/api/work/:id", (req, res) => {
+app.delete("/work/:id", (req, res) => {
     res.json({
         message: "Job deleted: " + req.params.id
     })
@@ -91,5 +136,5 @@ app.delete("/api/work/:id", (req, res) => {
 
 // Startar Express-servern.
 app.listen(port, ()=> {
-    console.log("Servern är startad på port: " + port);
+    console.log("Server is running on port: " + port);
 })
